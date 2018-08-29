@@ -24,8 +24,20 @@
  */
 package org.spongepowered.common.mixin.core.item.inventory;
 
+import net.minecraft.enchantment.Enchantment;
+import net.minecraft.inventory.Container;
 import net.minecraft.inventory.ContainerRepair;
+import net.minecraft.inventory.IInventory;
+import net.minecraft.item.ItemStack;
+import org.spongepowered.api.event.item.inventory.UpdateAnvilEvent;
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
+import org.spongepowered.common.event.SpongeCommonEventFactory;
 import org.spongepowered.common.item.inventory.adapter.InventoryAdapter;
 import org.spongepowered.common.item.inventory.adapter.impl.slots.InputSlotAdapter;
 import org.spongepowered.common.item.inventory.adapter.impl.slots.OutputSlotAdapter;
@@ -39,12 +51,22 @@ import org.spongepowered.common.item.inventory.lens.impl.comp.OrderedInventoryLe
 import org.spongepowered.common.item.inventory.lens.impl.minecraft.container.ContainerLens;
 import org.spongepowered.common.item.inventory.lens.impl.slots.InputSlotLensImpl;
 import org.spongepowered.common.item.inventory.lens.impl.slots.OutputSlotLensImpl;
+import org.spongepowered.common.item.inventory.util.ItemStackUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Mixin(ContainerRepair.class)
 public abstract class MixinContainerRepair extends MixinContainer implements LensProvider {
+
+    @Shadow private String repairedItemName;
+
+    @Shadow @Final private IInventory outputSlot;
+
+    @Shadow public int maximumCost;
+
+    @Shadow private int materialCost;
 
     @Override
     public Lens rootLens(Fabric fabric, InventoryAdapter adapter) {
@@ -62,5 +84,26 @@ public abstract class MixinContainerRepair extends MixinContainer implements Len
                 .add(1, OutputSlotAdapter.class, i -> new OutputSlotLensImpl(i, s -> false, t -> false))
                 .add(36);
         return builder.build();
+    }
+
+    @Inject(method = "updateRepairOutput",
+            locals = LocalCapture.CAPTURE_FAILSOFT,
+            cancellable = true,
+            at = @At(value = "INVOKE_ASSIGN", target = "Lnet/minecraft/item/ItemEnchantedBook;getEnchantments(Lnet/minecraft/item/ItemStack;)Lnet/minecraft/nbt/NBTTagList;"))
+    private void onUpdateRepairOutput(CallbackInfo ci, ItemStack itemstack, int i, int j, int k, ItemStack itemstack1, ItemStack itemstack2, Map<Enchantment, Integer> map, boolean flag) {
+        UpdateAnvilEvent event = SpongeCommonEventFactory.callUpdateAnvilEvent((ContainerRepair) (Object) this, itemstack, itemstack2, this.repairedItemName);
+
+        if (event.isCancelled()) {
+            ci.cancel();
+            return;
+        }
+
+        if (event.getResult().isPresent()) {
+            this.outputSlot.setInventorySlotContents(0, ItemStackUtil.fromSnapshotToNative(event.getResult().get()));
+            this.maximumCost = event.getLevelCost();
+            this.materialCost = event.getMaterialCost();
+            ci.cancel();
+        }
+        // else compute vanilla repair
     }
 }
