@@ -25,11 +25,11 @@
 package org.spongepowered.common.mixin.core.item.inventory;
 
 import net.minecraft.enchantment.Enchantment;
-import net.minecraft.inventory.Container;
 import net.minecraft.inventory.ContainerRepair;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import org.spongepowered.api.event.item.inventory.UpdateAnvilEvent;
+import org.spongepowered.api.item.inventory.ItemStackSnapshot;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -68,6 +68,8 @@ public abstract class MixinContainerRepair extends MixinContainer implements Len
 
     @Shadow private int materialCost;
 
+    @Shadow @Final public IInventory inputSlots;
+
     @Override
     public Lens rootLens(Fabric fabric, InventoryAdapter adapter) {
         List<Lens> lenses = new ArrayList<>();
@@ -86,24 +88,27 @@ public abstract class MixinContainerRepair extends MixinContainer implements Len
         return builder.build();
     }
 
-    @Inject(method = "updateRepairOutput",
-            locals = LocalCapture.CAPTURE_FAILSOFT,
-            cancellable = true,
-            at = @At(value = "INVOKE_ASSIGN", target = "Lnet/minecraft/item/ItemEnchantedBook;getEnchantments(Lnet/minecraft/item/ItemStack;)Lnet/minecraft/nbt/NBTTagList;"))
-    private void onUpdateRepairOutput(CallbackInfo ci, ItemStack itemstack, int i, int j, int k, ItemStack itemstack1, ItemStack itemstack2, Map<Enchantment, Integer> map, boolean flag) {
-        UpdateAnvilEvent event = SpongeCommonEventFactory.callUpdateAnvilEvent((ContainerRepair) (Object) this, itemstack, itemstack2, this.repairedItemName);
+    @Inject(method = "updateRepairOutput", at = @At(value = "RETURN"))
+    private void onUpdateRepairOutput(CallbackInfo ci) {
+        ItemStack itemstack = this.inputSlots.getStackInSlot(0);
+        ItemStack itemstack2 = this.inputSlots.getStackInSlot(1);
+        ItemStack result = this.outputSlot.getStackInSlot(0);
+        UpdateAnvilEvent event = SpongeCommonEventFactory.callUpdateAnvilEvent((ContainerRepair) (Object) this, itemstack, itemstack2, result, this.repairedItemName, this.maximumCost, this.materialCost);
 
-        if (event.isCancelled()) {
-            ci.cancel();
+        ItemStackSnapshot finalItem = event.getItem().getFinal();
+        if (event.isCancelled() || finalItem.isEmpty()) {
+            this.outputSlot.setInventorySlotContents(0, ItemStack.EMPTY);
+            this.maximumCost = 0;
+            this.materialCost = 0;
+            this.detectAndSendChanges();
             return;
         }
 
-        if (event.getResult().isPresent()) {
-            this.outputSlot.setInventorySlotContents(0, ItemStackUtil.fromSnapshotToNative(event.getResult().get()));
-            this.maximumCost = event.getLevelCost();
-            this.materialCost = event.getMaterialCost();
-            ci.cancel();
-        }
-        // else compute vanilla repair
+        this.outputSlot.setInventorySlotContents(0, ItemStackUtil.fromSnapshotToNative(event.getItem().getFinal()));
+        this.maximumCost = event.getLevelCost();
+        this.materialCost = event.getMaterialCost();
+        this.listeners.forEach(l -> l.sendWindowProperty(((ContainerRepair)(Object) this), 0, this.maximumCost));
+        this.detectAndSendChanges();
     }
+
 }

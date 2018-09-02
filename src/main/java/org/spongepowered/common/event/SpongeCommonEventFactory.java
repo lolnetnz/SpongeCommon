@@ -62,6 +62,9 @@ import org.spongepowered.api.Sponge;
 import org.spongepowered.api.block.BlockSnapshot;
 import org.spongepowered.api.block.BlockState;
 import org.spongepowered.api.block.tileentity.TileEntity;
+import org.spongepowered.api.data.DataContainer;
+import org.spongepowered.api.data.DataQuery;
+import org.spongepowered.api.data.Queries;
 import org.spongepowered.api.data.Transaction;
 import org.spongepowered.api.data.type.HandTypes;
 import org.spongepowered.api.entity.Entity;
@@ -1429,9 +1432,10 @@ public class SpongeCommonEventFactory {
         // Forge's PlayerRespawnEvent
     }
 
-    public static UpdateAnvilEvent callUpdateAnvilEvent(ContainerRepair anvil, ItemStack slot1, ItemStack slot2, String name) {
+    public static UpdateAnvilEvent callUpdateAnvilEvent(ContainerRepair anvil, ItemStack slot1, ItemStack slot2, ItemStack result, String name, int levelCost, int materialCost) {
+        Transaction<ItemStackSnapshot> transaction = new Transaction<>(ItemStackSnapshot.NONE, ItemStackUtil.snapshotOf(result));
         UpdateAnvilEvent event = SpongeEventFactory.createUpdateAnvilEvent(Sponge.getCauseStackManager().getCurrentCause(),
-                name, ItemStackUtil.snapshotOf(slot1), Optional.empty(), ItemStackUtil.snapshotOf(slot2), ((Inventory) anvil), 0, 0);
+                levelCost, levelCost, materialCost, materialCost, transaction, name, ItemStackUtil.snapshotOf(slot1), ItemStackUtil.snapshotOf(slot2), (Inventory)anvil);
         SpongeImpl.postEvent(event);
         return event;
     }
